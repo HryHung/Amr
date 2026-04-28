@@ -39,8 +39,8 @@ const unsigned long CMD_VEL_TIMEOUT_MS = 300;
 // =====================================================
 // THÔNG SỐ HÌNH HỌC ROBOT - PHẢI ĐIỀN ĐÚNG
 // =====================================================
-const float WHEEL_RADIUS_M = 0.05f;
-const float WHEEL_BASE_M   = 0.32f;
+const float WHEEL_RADIUS_M = 0.06f;
+const float WHEEL_BASE_M   = 0.435f;
 
 // =====================================================
 // ROS TOPIC / FRAME
