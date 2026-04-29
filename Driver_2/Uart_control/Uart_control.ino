@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <math.h>
-#include <time.h>
 
 #include <micro_ros_arduino.h>
 #include <rmw_microros/rmw_microros.h>
@@ -9,14 +8,8 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 
-#include <nav_msgs/msg/odometry.h>
 #include <geometry_msgs/msg/twist.h>
-#include <tf2_msgs/msg/tf_message.h>
-#include <geometry_msgs/msg/transform_stamped.h>
-#include <builtin_interfaces/msg/time.h>
-
-#include <rosidl_runtime_c/string.h>
-#include <rosidl_runtime_c/string_functions.h>
+#include <std_msgs/msg/float32_multi_array.h>
 
 // =====================================================
 // CẤU HÌNH CƠ BẢN
@@ -45,12 +38,10 @@ const float WHEEL_RADIUS_M = 0.06f;
 const float WHEEL_BASE_M   = 0.435f;
 
 // =====================================================
-// ROS TOPIC / FRAME
+// ROS TOPIC
 // =====================================================
 const char * CMD_VEL_TOPIC = "cmd_vel";
-const char * ODOM_TOPIC    = "odom";
-const char * ODOM_FRAME    = "odom";
-const char * BASE_FRAME    = "base_link";
+const char * RPM_FEEDBACK_TOPIC = "wheel_rpm_feedback";
 
 // =====================================================
 // PWM CHANNELS ESP32
@@ -112,32 +103,24 @@ Motor M2 = {
   -1, -1
 };
 
-// =====================================================
-// ODOM STATE
-// =====================================================
-float x_m = 0.0f;
-float y_m = 0.0f;
-float theta_rad = 0.0f;
-
 unsigned long previousControlMillis = 0;
 unsigned long lastCmdVelMillis = 0;
 
 // =====================================================
 // MICRO-ROS OBJECTS
 // =====================================================
-rcl_publisher_t odom_pub;
-rcl_publisher_t tf_pub;
+rcl_publisher_t rpm_pub;
 rcl_subscription_t cmd_sub;
 
-nav_msgs__msg__Odometry odom_msg;
-tf2_msgs__msg__TFMessage tf_msg;
-geometry_msgs__msg__TransformStamped tf_stamped;
+std_msgs__msg__Float32MultiArray rpm_msg;
 geometry_msgs__msg__Twist cmd_msg;
 
 rclc_executor_t executor;
 rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
+
+float rpm_feedback_buffer[2] = {0.0f, 0.0f};
 
 // =====================================================
 // HÀM TIỆN ÍCH
@@ -158,40 +141,6 @@ static inline int get_pwm_l_channel(const Motor &m) {
 
 static inline float signf_nonzero(float x) {
   return (x >= 0.0f) ? 1.0f : -1.0f;
-}
-
-static inline float normalize_angle(float a) {
-  while (a > PI)  a -= 2.0f * PI;
-  while (a < -PI) a += 2.0f * PI;
-  return a;
-}
-
-void set_quat_from_yaw(float yaw, geometry_msgs__msg__Quaternion *q) {
-  q->x = 0.0;
-  q->y = 0.0;
-  q->z = sinf(yaw * 0.5f);
-  q->w = cosf(yaw * 0.5f);
-}
-
-void set_ros_string(rosidl_runtime_c__String *str, const char *text) {
-  if (str->data != NULL) {
-    rosidl_runtime_c__String__fini(str);
-  }
-  rosidl_runtime_c__String__init(str);
-  rosidl_runtime_c__String__assign(str, text);
-}
-
-void fill_stamp(builtin_interfaces__msg__Time *stamp) {
-  int64_t now_ns = rmw_uros_epoch_nanos();
-
-  if (now_ns > 0) {
-    stamp->sec = (int32_t)(now_ns / 1000000000LL);
-    stamp->nanosec = (uint32_t)(now_ns % 1000000000LL);
-  } else {
-    unsigned long ms = millis();
-    stamp->sec = (int32_t)(ms / 1000UL);
-    stamp->nanosec = (uint32_t)((ms % 1000UL) * 1000000UL);
-  }
 }
 
 void stop_all_targets() {
@@ -230,6 +179,9 @@ void reset_motor_runtime(Motor &m) {
   m.lastPWM     = 0;
 }
 
+// =====================================================
+// ISR ENCODER
+// =====================================================
 void IRAM_ATTR readEnc1() {
   unsigned long t = micros();
   if (t - M1.lastPulseTime > debounceDelay) {
@@ -248,6 +200,9 @@ void IRAM_ATTR readEnc2() {
   }
 }
 
+// =====================================================
+// CMD_VEL CALLBACK
+// =====================================================
 void cmd_callback(const void *msgin) {
   const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
 
@@ -266,6 +221,9 @@ void cmd_callback(const void *msgin) {
   lastCmdVelMillis = millis();
 }
 
+// =====================================================
+// PID + FEEDFORWARD
+// =====================================================
 int compute_motor_pwm(Motor &m, long diffCount, float Ts) {
   m.lastDiff = diffCount;
 
@@ -324,43 +282,15 @@ int compute_motor_pwm(Motor &m, long diffCount, float Ts) {
   return pwm;
 }
 
-void publish_odom_and_tf(float dL, float dR, float Ts) {
-  const float dC = 0.5f * (dL + dR);
-  const float dTh = (dR - dL) / WHEEL_BASE_M;
-
-  x_m += dC * cosf(theta_rad + 0.5f * dTh);
-  y_m += dC * sinf(theta_rad + 0.5f * dTh);
-  theta_rad = normalize_angle(theta_rad + dTh);
-
-  fill_stamp(&odom_msg.header.stamp);
-
-  odom_msg.pose.pose.position.x = x_m;
-  odom_msg.pose.pose.position.y = y_m;
-  odom_msg.pose.pose.position.z = 0.0;
-  set_quat_from_yaw(theta_rad, &odom_msg.pose.pose.orientation);
-
-  odom_msg.twist.twist.linear.x = dC / Ts;
-  odom_msg.twist.twist.linear.y = 0.0;
-  odom_msg.twist.twist.linear.z = 0.0;
-  odom_msg.twist.twist.angular.x = 0.0;
-  odom_msg.twist.twist.angular.y = 0.0;
-  odom_msg.twist.twist.angular.z = dTh / Ts;
-
-  rcl_publish(&odom_pub, &odom_msg, NULL);
-
-  tf_stamped.header.stamp = odom_msg.header.stamp;
-  tf_stamped.transform.translation.x = x_m;
-  tf_stamped.transform.translation.y = y_m;
-  tf_stamped.transform.translation.z = 0.0;
-  set_quat_from_yaw(theta_rad, &tf_stamped.transform.rotation);
-
-  tf_msg.transforms.data = &tf_stamped;
-  tf_msg.transforms.size = 1;
-  tf_msg.transforms.capacity = 1;
-
-  rcl_publish(&tf_pub, &tf_msg, NULL);
+void publish_rpm_feedback() {
+  rpm_feedback_buffer[0] = M1.actualRPM;
+  rpm_feedback_buffer[1] = M2.actualRPM;
+  rcl_publish(&rpm_pub, &rpm_msg, NULL);
 }
 
+// =====================================================
+// CONTROL LOOP
+// =====================================================
 void compute_control_loop() {
   const float Ts = sampleTime / 1000.0f;
 
@@ -377,21 +307,21 @@ void compute_control_loop() {
   long diff1 = cur1 - M1.prevCount;
   long diff2 = cur2 - M2.prevCount;
 
-  const float dL = ((float)diff1 / (float)PULSES_PER_REV) * (2.0f * PI * WHEEL_RADIUS_M);
-  const float dR = ((float)diff2 / (float)PULSES_PER_REV) * (2.0f * PI * WHEEL_RADIUS_M);
-
-  publish_odom_and_tf(dL, dR, Ts);
-
   int pwm1 = compute_motor_pwm(M1, diff1, Ts);
   int pwm2 = compute_motor_pwm(M2, diff2, Ts);
 
   apply_motor_pwm(M1, pwm1);
   apply_motor_pwm(M2, pwm2);
 
+  publish_rpm_feedback();
+
   M1.prevCount = cur1;
   M2.prevCount = cur2;
 }
 
+// =====================================================
+// MOTOR SETUP
+// =====================================================
 void setup_motor(Motor &m, void (*isr)()) {
   pinMode(m.EN_R, OUTPUT);
   pinMode(m.EN_L, OUTPUT);
@@ -416,47 +346,31 @@ void setup_motor(Motor &m, void (*isr)()) {
   attachInterrupt(digitalPinToInterrupt(m.ENC_A), isr, RISING);
 }
 
+// =====================================================
+// SETUP MICRO-ROS MSG
+// =====================================================
 void setup_ros_messages() {
-  nav_msgs__msg__Odometry__init(&odom_msg);
-  tf2_msgs__msg__TFMessage__init(&tf_msg);
-  geometry_msgs__msg__TransformStamped__init(&tf_stamped);
+  std_msgs__msg__Float32MultiArray__init(&rpm_msg);
   geometry_msgs__msg__Twist__init(&cmd_msg);
 
-  set_ros_string(&odom_msg.header.frame_id, ODOM_FRAME);
-  set_ros_string(&odom_msg.child_frame_id, BASE_FRAME);
+  rpm_msg.data.data = rpm_feedback_buffer;
+  rpm_msg.data.size = 2;
+  rpm_msg.data.capacity = 2;
 
-  set_ros_string(&tf_stamped.header.frame_id, ODOM_FRAME);
-  set_ros_string(&tf_stamped.child_frame_id, BASE_FRAME);
-
-  for (int i = 0; i < 36; i++) {
-    odom_msg.pose.covariance[i] = 0.0;
-    odom_msg.twist.covariance[i] = 0.0;
-  }
-
-  odom_msg.pose.covariance[0]  = 1e-3;
-  odom_msg.pose.covariance[7]  = 1e-3;
-  odom_msg.pose.covariance[14] = 1e6;
-  odom_msg.pose.covariance[21] = 1e6;
-  odom_msg.pose.covariance[28] = 1e6;
-  odom_msg.pose.covariance[35] = 1e-2;
-
-  odom_msg.twist.covariance[0]  = 1e-2;
-  odom_msg.twist.covariance[7]  = 1e-2;
-  odom_msg.twist.covariance[14] = 1e6;
-  odom_msg.twist.covariance[21] = 1e6;
-  odom_msg.twist.covariance[28] = 1e6;
-  odom_msg.twist.covariance[35] = 1e-1;
-
-  tf_msg.transforms.data = &tf_stamped;
-  tf_msg.transforms.size = 1;
-  tf_msg.transforms.capacity = 1;
+  rpm_msg.layout.dim.data = NULL;
+  rpm_msg.layout.dim.size = 0;
+  rpm_msg.layout.dim.capacity = 0;
+  rpm_msg.layout.data_offset = 0;
 }
 
+// =====================================================
+// SETUP
+// =====================================================
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   delay(1000);
 
-  set_microros_serial_transports(Serial);
+  set_microros_transports();
 
   while (rmw_uros_ping_agent(1000, 1) != RMW_RET_OK) {
     delay(500);
@@ -473,14 +387,13 @@ void setup() {
   allocator = rcl_get_default_allocator();
 
   rcl_ret_t rc;
+
   rc = rclc_support_init(&support, 0, NULL, &allocator);
   if (rc != RCL_RET_OK) {
     while (1) {
       delay(100);
     }
   }
-
-  rmw_uros_sync_session(1000);
 
   rc = rclc_node_init_default(&node, "esp32_base", "", &support);
   if (rc != RCL_RET_OK) {
@@ -490,22 +403,10 @@ void setup() {
   }
 
   rc = rclc_publisher_init_default(
-    &odom_pub,
+    &rpm_pub,
     &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
-    ODOM_TOPIC
-  );
-  if (rc != RCL_RET_OK) {
-    while (1) {
-      delay(100);
-    }
-  }
-
-  rc = rclc_publisher_init_default(
-    &tf_pub,
-    &node,
-    ROSIDL_GET_MSG_TYPE_SUPPORT(tf2_msgs, msg, TFMessage),
-    "tf"
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+    RPM_FEEDBACK_TOPIC
   );
   if (rc != RCL_RET_OK) {
     while (1) {
@@ -543,6 +444,9 @@ void setup() {
   lastCmdVelMillis = millis();
 }
 
+// =====================================================
+// LOOP
+// =====================================================
 void loop() {
   rclc_executor_spin_some(&executor, RCL_MS_TO_NS(5));
 
