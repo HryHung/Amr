@@ -24,20 +24,18 @@
 const int GEAR_RATIO = 30;
 const float MAX_RPM = 333.0f;
 const int PULSES_PER_REV = 11 * GEAR_RATIO;
-const unsigned long sampleTime = 100;         // ms
+const unsigned long sampleTime = 100;   // 10 Hz
 
 const uint32_t pwmFreq = 5000;
 const uint8_t pwmResolution = 8;
 const int PWM_MAX = 255;
 
-const unsigned long debounceDelay = 300;      // us
+const unsigned long debounceDelay = 300;   // us
 
-// Feedforward / safety
 const float TARGET_ZERO_EPS_RPM = 1.0f;
 const float FF_MAX_FRACTION = 0.85f;
 const float PI_INTEGRAL_FRACTION = 0.60f;
 
-// Safety for ROS cmd_vel
 const unsigned long CMD_VEL_TIMEOUT_MS = 300;
 
 // =====================================================
@@ -72,16 +70,12 @@ struct Motor {
   long prevCount;
   volatile unsigned long lastPulseTime;
 
-  // PI/PID
   float Kp, Ki, Kd;
-
-  // Feedforward
   float Kff;
   float ffOffset;
   float ffTau;
   float ffFiltered;
 
-  // Runtime
   float targetRPM;
   float actualRPM;
   float error;
@@ -96,26 +90,13 @@ struct Motor {
   int encSign;
 };
 
-// =====================================================
-// MAPPING CHÂN
-// M1 = Left
-// M2 = Right
-// =====================================================
-
 // M1 = Left
 Motor M1 = {
   16, 17, 18, 19, 25, 26,
   0, 0, 0,
-
-  // PI
   0.48f, 1.55f, 0.0f,
-
-  // Feedforward
   0.62f, 12.0f, 0.12f, 0.0f,
-
-  // Runtime
   0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-
   0, 0,
   1, 1
 };
@@ -124,16 +105,9 @@ Motor M1 = {
 Motor M2 = {
   21, 22, 23, 27, 33, 32,
   0, 0, 0,
-
-  // PI
   0.50f, 1.43f, 0.0f,
-
-  // Feedforward
   0.65f, 9.0f, 0.12f, 0.0f,
-
-  // Runtime
   0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-
   0, 0,
   -1, -1
 };
@@ -207,9 +181,6 @@ void set_ros_string(rosidl_runtime_c__String *str, const char *text) {
   rosidl_runtime_c__String__assign(str, text);
 }
 
-// =====================================================
-// THỜI GIAN ROS ĐỒNG BỘ VỚI AGENT
-// =====================================================
 void fill_stamp(builtin_interfaces__msg__Time *stamp) {
   int64_t now_ns = rmw_uros_epoch_nanos();
 
@@ -217,7 +188,6 @@ void fill_stamp(builtin_interfaces__msg__Time *stamp) {
     stamp->sec = (int32_t)(now_ns / 1000000000LL);
     stamp->nanosec = (uint32_t)(now_ns % 1000000000LL);
   } else {
-    // fallback khi chưa sync được thời gian
     unsigned long ms = millis();
     stamp->sec = (int32_t)(ms / 1000UL);
     stamp->nanosec = (uint32_t)((ms % 1000UL) * 1000000UL);
@@ -229,9 +199,6 @@ void stop_all_targets() {
   M2.targetRPM = 0.0f;
 }
 
-// =====================================================
-// PWM APPLY - ESP32 CORE 3.x
-// =====================================================
 void apply_motor_pwm(const Motor &m, int pwmCmdSigned) {
   int signedCmd = m.pwmSign * pwmCmdSigned;
   signedCmd = constrain(signedCmd, -PWM_MAX, PWM_MAX);
@@ -263,9 +230,6 @@ void reset_motor_runtime(Motor &m) {
   m.lastPWM     = 0;
 }
 
-// =====================================================
-// ISR ENCODER
-// =====================================================
 void IRAM_ATTR readEnc1() {
   unsigned long t = micros();
   if (t - M1.lastPulseTime > debounceDelay) {
@@ -284,14 +248,11 @@ void IRAM_ATTR readEnc2() {
   }
 }
 
-// =====================================================
-// CMD_VEL CALLBACK
-// =====================================================
 void cmd_callback(const void *msgin) {
   const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
 
-  const float v = (float)msg->linear.x;   // m/s
-  const float w = (float)msg->angular.z;  // rad/s
+  const float v = (float)msg->linear.x;
+  const float w = (float)msg->angular.z;
 
   const float v_left  = v - (w * WHEEL_BASE_M * 0.5f);
   const float v_right = v + (w * WHEEL_BASE_M * 0.5f);
@@ -305,13 +266,9 @@ void cmd_callback(const void *msgin) {
   lastCmdVelMillis = millis();
 }
 
-// =====================================================
-// PID + FEEDFORWARD
-// =====================================================
 int compute_motor_pwm(Motor &m, long diffCount, float Ts) {
   m.lastDiff = diffCount;
 
-  // RPM phản hồi
   m.actualRPM = ((float)diffCount / (float)PULSES_PER_REV) * (60.0f / Ts);
 
   if (fabsf(m.targetRPM) < TARGET_ZERO_EPS_RPM) {
@@ -367,9 +324,6 @@ int compute_motor_pwm(Motor &m, long diffCount, float Ts) {
   return pwm;
 }
 
-// =====================================================
-// ODOM + TF PUBLISH
-// =====================================================
 void publish_odom_and_tf(float dL, float dR, float Ts) {
   const float dC = 0.5f * (dL + dR);
   const float dTh = (dR - dL) / WHEEL_BASE_M;
@@ -407,9 +361,6 @@ void publish_odom_and_tf(float dL, float dR, float Ts) {
   rcl_publish(&tf_pub, &tf_msg, NULL);
 }
 
-// =====================================================
-// CONTROL LOOP
-// =====================================================
 void compute_control_loop() {
   const float Ts = sampleTime / 1000.0f;
 
@@ -441,9 +392,6 @@ void compute_control_loop() {
   M2.prevCount = cur2;
 }
 
-// =====================================================
-// MOTOR SETUP - ESP32 CORE 3.x
-// =====================================================
 void setup_motor(Motor &m, void (*isr)()) {
   pinMode(m.EN_R, OUTPUT);
   pinMode(m.EN_L, OUTPUT);
@@ -457,7 +405,9 @@ void setup_motor(Motor &m, void (*isr)()) {
   bool okL = ledcAttachChannel(m.PWM_L, pwmFreq, pwmResolution, get_pwm_l_channel(m));
 
   if (!okR || !okL) {
-    Serial.println("LEDC attach failed");
+    while (1) {
+      delay(100);
+    }
   }
 
   ledcWriteChannel(get_pwm_r_channel(m), 0);
@@ -466,9 +416,6 @@ void setup_motor(Motor &m, void (*isr)()) {
   attachInterrupt(digitalPinToInterrupt(m.ENC_A), isr, RISING);
 }
 
-// =====================================================
-// SETUP MICRO-ROS MSG
-// =====================================================
 void setup_ros_messages() {
   nav_msgs__msg__Odometry__init(&odom_msg);
   tf2_msgs__msg__TFMessage__init(&tf_msg);
@@ -505,16 +452,12 @@ void setup_ros_messages() {
   tf_msg.transforms.capacity = 1;
 }
 
-// =====================================================
-// SETUP
-// =====================================================
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(921600);
   delay(1000);
 
-  set_microros_transports();
+  set_microros_serial_transports(Serial);
 
-  // chờ agent sẵn sàng
   while (rmw_uros_ping_agent(1000, 1) != RMW_RET_OK) {
     delay(500);
   }
@@ -530,7 +473,6 @@ void setup() {
   allocator = rcl_get_default_allocator();
 
   rcl_ret_t rc;
-
   rc = rclc_support_init(&support, 0, NULL, &allocator);
   if (rc != RCL_RET_OK) {
     while (1) {
@@ -538,9 +480,7 @@ void setup() {
     }
   }
 
-  // đồng bộ thời gian với agent
-  rmw_ret_t sync_ret = rmw_uros_sync_session(1000);
-  (void)sync_ret;
+  rmw_uros_sync_session(1000);
 
   rc = rclc_node_init_default(&node, "esp32_base", "", &support);
   if (rc != RCL_RET_OK) {
@@ -603,9 +543,6 @@ void setup() {
   lastCmdVelMillis = millis();
 }
 
-// =====================================================
-// LOOP
-// =====================================================
 void loop() {
   rclc_executor_spin_some(&executor, RCL_MS_TO_NS(5));
 
