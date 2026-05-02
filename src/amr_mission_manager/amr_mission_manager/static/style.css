@@ -1,0 +1,306 @@
+:root {
+  --bg: #07111f;
+  --panel: rgba(10, 23, 39, 0.88);
+  --panel-border: rgba(87, 140, 255, 0.22);
+  --card: rgba(17, 31, 49, 0.95);
+  --text: #ecf4ff;
+  --muted: #9ab0cb;
+  --blue: #2f7cff;
+  --blue-soft: rgba(47, 124, 255, 0.18);
+  --white: #ffffff;
+  --danger: #ff5d73;
+  --success: #2dd4bf;
+  --shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(47, 124, 255, 0.25), transparent 26%),
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08), transparent 18%),
+    linear-gradient(180deg, #040b14 0%, #07111f 100%);
+}
+
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.hero-card,
+.panel {
+  backdrop-filter: blur(18px);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.hero-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #8ab2ff;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+h1, h2, h3 {
+  margin: 0;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+.subtitle,
+.panel-note,
+.metric-label {
+  color: var(--muted);
+}
+
+.subtitle {
+  margin-top: 10px;
+  max-width: 760px;
+  line-height: 1.6;
+}
+
+.grid-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 24px;
+}
+
+.panel {
+  padding: 22px;
+}
+
+.panel-waypoints {
+  grid-column: 1 / -1;
+}
+
+.panel-header,
+.action-row,
+.mission-preview-header,
+.pill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.pill-row {
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.pill-blue {
+  background: var(--blue-soft);
+  color: #dbe8ff;
+  border-color: rgba(47, 124, 255, 0.42);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.metric-card,
+.message-box,
+.sequence-box,
+.waypoint-card,
+.table-wrap {
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+}
+
+.metric-card {
+  padding: 18px;
+}
+
+.metric-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.metric-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.message-box,
+.sequence-box {
+  margin-top: 18px;
+  padding: 16px 18px;
+  line-height: 1.6;
+}
+
+.action-row {
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: none;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.primary-btn,
+.ghost-btn,
+.danger-btn,
+.waypoint-card {
+  padding: 13px 16px;
+  border-radius: 16px;
+  font-weight: 700;
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #2f7cff 0%, #66a3ff 100%);
+  color: var(--white);
+  box-shadow: 0 10px 20px rgba(47, 124, 255, 0.28);
+}
+
+.ghost-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.danger-btn {
+  background: rgba(255, 93, 115, 0.12);
+  color: #ffc6cf;
+  border: 1px solid rgba(255, 93, 115, 0.32);
+}
+
+.waypoint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.waypoint-card {
+  text-align: left;
+  background: linear-gradient(180deg, rgba(16, 31, 50, 0.96), rgba(10, 21, 35, 0.96));
+  color: var(--text);
+  border: 1px solid rgba(105, 147, 255, 0.18);
+}
+
+.waypoint-card:hover {
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.24);
+  border-color: rgba(105, 147, 255, 0.5);
+}
+
+.home-card {
+  outline: 1px solid rgba(45, 212, 191, 0.45);
+}
+
+.waypoint-name {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.waypoint-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mission-preview {
+  margin-top: 18px;
+}
+
+.table-wrap {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+ td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+th {
+  color: #b9d0ff;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 1100px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 16px;
+  }
+
+  .hero-card,
+  .panel {
+    padding: 18px;
+  }
+
+  .hero-card {
+    flex-direction: column;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot name="amr_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--xacro:include filename="$(find amr_description)/urdf/amr_geometry.xacro"-->
+  <!--xacro:include filename="$(find amr_description)/urdf/amr_gazebo.xacro"-->
+
+  <xacro:include filename="$(find amr_description)/urdf/amr_real_v2.urdf.xacro"/>
+  <xacro:include filename="$(find amr_description)/urdf/amr_real_sim.urdf.xacro"/>
+
+</robot>

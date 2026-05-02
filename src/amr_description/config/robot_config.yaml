@@ -1,0 +1,54 @@
+robot:
+  frames:
+    base: base_link
+    odom: odom
+    lidar: lidar_link
+    imu: imu_link
+
+  topics:
+    cmd_vel: /cmd_vel
+    odom_raw: /odom/raw
+    odom: /odom
+    rpm_feedback: /wheel_rpm_feedback
+    scan: /scan
+    imu_data: /imu/data
+
+  geometry:
+    base_length: 0.47
+    base_width: 0.43
+    base_height: 0.10
+    ground_clearance: 0.023
+    base_mass: 4.0
+
+    wheel_radius: 0.06
+    wheel_width: 0.03
+    wheel_mass: 0.10
+    wheel_separation: 0.465
+    wheel_x: 0.0
+
+    caster_radius: 0.04
+    caster_width: 0.03
+    caster_mass: 0.10
+
+    lidar_pole_width: 0.04
+    lidar_pole_length: 0.04
+    lidar_pole_height: 0.235
+
+    lidar_radius: 0.038
+    lidar_height: 0.03
+    lidar_x: 0.195
+    lidar_y: 0.0
+    lidar_yaw: 3.1415926535897931
+
+    imu_size_x: 0.04
+    imu_size_y: 0.04
+    imu_size_z: 0.015
+    imu_mass: 0.01
+    imu_x: 0.0
+    imu_y: 0.0
+
+  simulation:
+    wheel_torque: 20.0
+    wheel_acceleration: 2.0
+    lidar_update_rate: 10.0
+    imu_update_rate: 50.0

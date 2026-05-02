@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMR Mission Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero-card">
+      <div>
+        <p class="eyebrow">AMR LOCAL CONTROL</p>
+        <h1>Mission Manager Dashboard</h1>
+        <p class="subtitle">Local browser interface for waypoint mission creation, execution, station confirmation, and safe return-home control.</p>
+      </div>
+      <div class="pill-row">
+        <span class="pill" id="server-mode-pill">LOCALHOST ONLY</span>
+        <span class="pill pill-blue" id="status-pill">BOOTING</span>
+      </div>
+    </header>
+
+    <main class="grid-layout">
+      <section class="panel panel-status">
+        <div class="panel-header">
+          <h2>Robot Status</h2>
+          <button class="ghost-btn" id="refresh-status-btn">Refresh</button>
+        </div>
+        <div class="status-grid">
+          <div class="metric-card">
+            <span class="metric-label">State</span>
+            <span class="metric-value" id="status-text">BOOTING</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Current Target</span>
+            <span class="metric-value" id="current-target">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Awaiting Confirm</span>
+            <span class="metric-value" id="awaiting-target">-</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Auto Return Home</span>
+            <span class="metric-value" id="home-name">-</span>
+          </div>
+        </div>
+        <div class="message-box" id="status-message">Starting system...</div>
+        <div class="action-row">
+          <button class="primary-btn" id="continue-btn" disabled>Continue at Station</button>
+          <button class="danger-btn" id="cancel-btn" disabled>Cancel Mission</button>
+          <button class="ghost-btn" id="reload-waypoints-btn">Reload Waypoints</button>
+        </div>
+      </section>
+
+      <section class="panel panel-mission">
+        <div class="panel-header">
+          <h2>Create Mission</h2>
+          <span class="panel-note">Click waypoints to build route order</span>
+        </div>
+        <div class="waypoint-grid" id="waypoint-grid"></div>
+        <div class="mission-preview">
+          <div class="mission-preview-header">
+            <h3>Mission Sequence</h3>
+            <button class="ghost-btn" id="clear-mission-btn">Clear</button>
+          </div>
+          <div id="mission-sequence" class="sequence-box">No waypoint selected.</div>
+        </div>
+        <div class="action-row">
+          <button class="primary-btn" id="start-mission-btn">Start Mission</button>
+        </div>
+      </section>
+
+      <section class="panel panel-waypoints">
+        <div class="panel-header">
+          <h2>Waypoint Database</h2>
+          <span class="panel-note">Read-only preview from waypoints.json</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>X</th>
+                <th>Y</th>
+                <th>Qz</th>
+                <th>Qw</th>
+              </tr>
+            </thead>
+            <tbody id="waypoint-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const missionSequence = [];
+
+    async function callApi(url, method = 'GET', payload = null) {
+      const options = { method, headers: {} };
+      if (payload !== null) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(payload);
+      }
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.message || 'Request failed');
+      }
+      return data;
+    }
+
+    function renderMissionSequence(homeName = '-') {
+      const box = document.getElementById('mission-sequence');
+      if (missionSequence.length === 0) {
+        box.textContent = 'No waypoint selected.';
+        return;
+      }
+      box.textContent = missionSequence.join(' -> ') + ' -> ' + homeName + ' (Auto Return Home)';
+    }
+
+    function addWaypointToMission(name, homeName) {
+      missionSequence.push(name);
+      renderMissionSequence(homeName);
+    }
+
+    function renderWaypointCards(waypoints, homeName) {
+      const grid = document.getElementById('waypoint-grid');
+      grid.innerHTML = '';
+      Object.keys(waypoints).forEach((name) => {
+        const card = document.createElement('button');
+        card.className = 'waypoint-card';
+        if (name === homeName) {
+          card.classList.add('home-card');
+        }
+        card.innerHTML = `
+          <span class="waypoint-name">${name}</span>
+          <span class="waypoint-meta">x=${Number(waypoints[name].x).toFixed(2)}, y=${Number(waypoints[name].y).toFixed(2)}</span>
+        `;
+        card.addEventListener('click', () => addWaypointToMission(name, homeName));
+        grid.appendChild(card);
+      });
+    }
+
+    function renderWaypointTable(waypoints) {
+      const body = document.getElementById('waypoint-table-body');
+      body.innerHTML = '';
+      Object.entries(waypoints).forEach(([name, point]) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${name}</td>
+          <td>${Number(point.x).toFixed(3)}</td>
+          <td>${Number(point.y).toFixed(3)}</td>
+          <td>${Number(point.qz).toFixed(4)}</td>
+          <td>${Number(point.qw).toFixed(4)}</td>
+        `;
+        body.appendChild(row);
+      });
+    }
+
+    function updateStatusUi(payload) {
+      document.getElementById('status-pill').textContent = payload.status;
+      document.getElementById('status-text').textContent = payload.status;
+      document.getElementById('current-target').textContent = payload.current_target || '-';
+      document.getElementById('awaiting-target').textContent = payload.awaiting_ack_target || '-';
+      document.getElementById('home-name').textContent = payload.home_name || '-';
+      document.getElementById('status-message').textContent = payload.message || '-';
+      document.getElementById('cancel-btn').disabled = !payload.busy;
+      document.getElementById('continue-btn').disabled = !payload.awaiting_ack_target;
+      renderMissionSequence(payload.home_name || '-');
+    }
+
+    async function loadWaypoints() {
+      const data = await callApi('/api/waypoints');
+      renderWaypointCards(data.waypoints, data.home_name);
+      renderWaypointTable(data.waypoints);
+      renderMissionSequence(data.home_name || '-');
+    }
+
+    async function refreshStatus() {
+      const payload = await callApi('/api/status');
+      updateStatusUi(payload);
+    }
+
+    async function boot() {
+      await loadWaypoints();
+      await refreshStatus();
+      setInterval(refreshStatus, 1000);
+    }
+
+    document.getElementById('refresh-status-btn').addEventListener('click', refreshStatus);
+
+    document.getElementById('clear-mission-btn').addEventListener('click', async () => {
+      missionSequence.length = 0;
+      await refreshStatus();
+    });
+
+    document.getElementById('reload-waypoints-btn').addEventListener('click', async () => {
+      try {
+        await callApi('/api/reload_waypoints', 'POST');
+        missionSequence.length = 0;
+        await loadWaypoints();
+        await refreshStatus();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    document.getElementById('start-mission-btn').addEventListener('click', async () => {
+      if (missionSequence.length === 0) {
+        alert('Select at least one waypoint first.');
+        return;
+      }
+      try {
+        await callApi('/api/start_mission', 'POST', { mission_sequence: missionSequence });
+        missionSequence.length = 0;
+        await refreshStatus();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    document.getElementById('continue-btn').addEventListener('click', async () => {
+      try {
+        await callApi('/api/continue', 'POST');
+        await refreshStatus();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    document.getElementById('cancel-btn').addEventListener('click', async () => {
+      try {
+        await callApi('/api/cancel', 'POST');
+        await refreshStatus();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    boot().catch((error) => {
+      document.getElementById('status-message').textContent = error.message;
+    });
+  </script>
+</body>
+</html>
